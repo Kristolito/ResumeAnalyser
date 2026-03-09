@@ -41,6 +41,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IPdfTextExtractor, PdfTextExtractor>();
 builder.Services.AddScoped<IAiResumeAnalysisService, MockAiResumeAnalysisService>();
 builder.Services.AddScoped<IResumeAnalysisService, ResumeAnalysisService>();
+builder.Services.AddScoped<IResumeAnalysisHistoryService, ResumeAnalysisHistoryService>();
 builder.Services.AddScoped<IPdfFileValidator, PdfFileValidator>();
 
 var app = builder.Build();

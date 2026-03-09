@@ -1,4 +1,7 @@
 using System.Text.RegularExpressions;
+using System.Text.Json;
+using ResumeAnalyser.Api.Data;
+using ResumeAnalyser.Api.Domain.Entities;
 using ResumeAnalyser.Api.Models;
 using ResumeAnalyser.Api.Services.Interfaces;
 using ResumeAnalyser.Api.Services.Models;
@@ -7,6 +10,7 @@ namespace ResumeAnalyser.Api.Services.Implementations;
 
 public sealed class ResumeAnalysisService(
     IPdfTextExtractor pdfTextExtractor,
+    AppDbContext dbContext,
     ILogger<ResumeAnalysisService> logger,
     IHostEnvironment hostEnvironment) : IResumeAnalysisService
 {
@@ -80,7 +84,7 @@ public sealed class ResumeAnalysisService(
             signals.KeywordMatchedCount,
             signals.KeywordTargetCount);
 
-        return new ResumeAnalysisResponse
+        var response = new ResumeAnalysisResponse
         {
             OverallScore = overallScore,
             AtsScore = atsScore,
@@ -91,6 +95,26 @@ public sealed class ResumeAnalysisService(
             Recommendations = recommendations,
             DebugExtractedTextPreview = hostEnvironment.IsDevelopment() ? previewText : null
         };
+
+        var record = new ResumeAnalysisRecord
+        {
+            FileName = request.File?.FileName ?? "uploaded-resume.pdf",
+            TargetJobTitle = request.TargetJobTitle.Trim(),
+            OverallScore = response.OverallScore,
+            AtsScore = response.AtsScore,
+            ResultJson = JsonSerializer.Serialize(new StoredAnalysisPayload
+            {
+                Analysis = response,
+                TargetJobDescription = request.TargetJobDescription.Trim(),
+                Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
+            }),
+            CreatedAtUtc = DateTime.UtcNow
+        };
+
+        dbContext.ResumeAnalysisRecords.Add(record);
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return response;
     }
 
     private static RuleBasedAnalysisSignals CollectSignals(string resumeText, List<string> keywordTargets)
