@@ -15,4 +15,7 @@ public sealed class ResumeAnalysisResponse
     public List<string> MissingKeywords { get; set; } = [];
 
     public List<string> Recommendations { get; set; } = [];
+
+    // Development-only helper to verify PDF extraction output.
+    public string? DebugExtractedTextPreview { get; set; }
 }

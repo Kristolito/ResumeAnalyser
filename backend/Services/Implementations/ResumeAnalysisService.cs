@@ -3,14 +3,27 @@ using ResumeAnalyser.Api.Services.Interfaces;
 
 namespace ResumeAnalyser.Api.Services.Implementations;
 
-public sealed class ResumeAnalysisService : IResumeAnalysisService
+public sealed class ResumeAnalysisService(
+    IPdfTextExtractor pdfTextExtractor,
+    ILogger<ResumeAnalysisService> logger,
+    IHostEnvironment hostEnvironment) : IResumeAnalysisService
 {
     public async Task<ResumeAnalysisResponse> AnalyseAsync(
         ResumeAnalysisRequest request,
         CancellationToken cancellationToken = default)
     {
-        await Task.CompletedTask;
-        return new ResumeAnalysisResponse
+        var extractedResumeText = await pdfTextExtractor.ExtractTextAsync(request.File!, cancellationToken);
+        var textPreview = extractedResumeText.Length > 320
+            ? extractedResumeText[..320] + "..."
+            : extractedResumeText;
+
+        logger.LogInformation(
+            "PDF text extraction completed for {FileName}. Extracted length: {ExtractedLength}. Preview: {Preview}",
+            request.File?.FileName,
+            extractedResumeText.Length,
+            textPreview);
+
+        var response = new ResumeAnalysisResponse
         {
             OverallScore = 72,
             AtsScore = 68,
@@ -20,5 +33,12 @@ public sealed class ResumeAnalysisService : IResumeAnalysisService
             MissingKeywords = ["Microservices", "CI/CD"],
             Recommendations = ["Add measurable achievements"]
         };
+
+        if (hostEnvironment.IsDevelopment())
+        {
+            response.DebugExtractedTextPreview = textPreview;
+        }
+
+        return response;
     }
 }

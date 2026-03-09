@@ -38,7 +38,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseMySql(connectionString, mysqlServerVersion);
 });
 
-builder.Services.AddScoped<IPdfTextExtractor, MockPdfTextExtractor>();
+builder.Services.AddScoped<IPdfTextExtractor, PdfTextExtractor>();
 builder.Services.AddScoped<IAiResumeAnalysisService, MockAiResumeAnalysisService>();
 builder.Services.AddScoped<IResumeAnalysisService, ResumeAnalysisService>();
 builder.Services.AddScoped<IPdfFileValidator, PdfFileValidator>();

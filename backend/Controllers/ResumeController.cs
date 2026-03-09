@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Mvc;
 using ResumeAnalyser.Api.Infrastructure.FileValidation;
 using ResumeAnalyser.Api.Models;
+using ResumeAnalyser.Api.Services.Exceptions;
 using ResumeAnalyser.Api.Services.Interfaces;
 
 namespace ResumeAnalyser.Api.Controllers;
@@ -30,7 +31,14 @@ public sealed class ResumeController(
             return BadRequest(fileValidationError);
         }
 
-        var analysis = await resumeAnalysisService.AnalyseAsync(request, cancellationToken);
-        return Ok(analysis);
+        try
+        {
+            var analysis = await resumeAnalysisService.AnalyseAsync(request, cancellationToken);
+            return Ok(analysis);
+        }
+        catch (PdfTextExtractionException exception)
+        {
+            return BadRequest(exception.Message);
+        }
     }
 }
