@@ -11,10 +11,12 @@ namespace ResumeAnalyser.Api.Services.Implementations;
 public sealed class ResumeAnalysisHistoryService(AppDbContext dbContext) : IResumeAnalysisHistoryService
 {
     public async Task<IReadOnlyList<ResumeAnalysisHistoryItemResponse>> GetAnalysesAsync(
+        string userId,
         CancellationToken cancellationToken = default)
     {
         return await dbContext.ResumeAnalysisRecords
             .AsNoTracking()
+            .Where(record => record.UserId == userId)
             .OrderByDescending(record => record.CreatedAtUtc)
             .Select(record => new ResumeAnalysisHistoryItemResponse
             {
@@ -29,12 +31,13 @@ public sealed class ResumeAnalysisHistoryService(AppDbContext dbContext) : IResu
     }
 
     public async Task<ResumeAnalysisHistoryDetailResponse?> GetAnalysisByIdAsync(
+        string userId,
         Guid id,
         CancellationToken cancellationToken = default)
     {
         var record = await dbContext.ResumeAnalysisRecords
             .AsNoTracking()
-            .FirstOrDefaultAsync(item => item.Id == id, cancellationToken);
+            .FirstOrDefaultAsync(item => item.Id == id && item.UserId == userId, cancellationToken);
 
         if (record is null)
         {

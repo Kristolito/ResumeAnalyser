@@ -1,3 +1,5 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ResumeAnalyser.Api.Infrastructure.FileValidation;
 using ResumeAnalyser.Api.Models;
@@ -8,6 +10,7 @@ using ResumeAnalyser.Api.Services.Interfaces;
 namespace ResumeAnalyser.Api.Controllers;
 
 [ApiController]
+[Authorize]
 [Route("api/resume")]
 public sealed class ResumeController(
     IResumeAnalysisService resumeAnalysisService,
@@ -35,7 +38,13 @@ public sealed class ResumeController(
 
         try
         {
-            var analysis = await resumeAnalysisService.AnalyseAsync(request, cancellationToken);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrWhiteSpace(userId))
+            {
+                return Unauthorized();
+            }
+
+            var analysis = await resumeAnalysisService.AnalyseAsync(userId, request, cancellationToken);
             return Ok(analysis);
         }
         catch (PdfTextExtractionException exception)
@@ -49,7 +58,13 @@ public sealed class ResumeController(
     public async Task<ActionResult<IReadOnlyList<ResumeAnalysisHistoryItemResponse>>> GetAnalyses(
         CancellationToken cancellationToken)
     {
-        var analyses = await resumeAnalysisHistoryService.GetAnalysesAsync(cancellationToken);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var analyses = await resumeAnalysisHistoryService.GetAnalysesAsync(userId, cancellationToken);
         return Ok(analyses);
     }
 
@@ -60,7 +75,13 @@ public sealed class ResumeController(
         Guid id,
         CancellationToken cancellationToken)
     {
-        var analysis = await resumeAnalysisHistoryService.GetAnalysisByIdAsync(id, cancellationToken);
+        var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(userId))
+        {
+            return Unauthorized();
+        }
+
+        var analysis = await resumeAnalysisHistoryService.GetAnalysisByIdAsync(userId, id, cancellationToken);
         if (analysis is null)
         {
             return NotFound();

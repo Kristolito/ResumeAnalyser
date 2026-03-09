@@ -1,4 +1,4 @@
-import { env } from '../config/env'
+import { apiRequest } from './apiClient'
 import type { ResumeAnalysisRequest, ResumeAnalysisResponse } from '../types/resumeAnalysis'
 
 export async function analyseResume(
@@ -13,15 +13,8 @@ export async function analyseResume(
     formData.append('notes', request.notes.trim())
   }
 
-  const response = await fetch(`${env.apiBaseUrl}/api/resume/analyse`, {
+  return apiRequest<ResumeAnalysisResponse>('/api/resume/analyse', {
     method: 'POST',
     body: formData,
   })
-
-  if (!response.ok) {
-    const errorMessage = await response.text()
-    throw new Error(errorMessage || 'Could not analyse the resume. Please try again.')
-  }
-
-  return (await response.json()) as ResumeAnalysisResponse
 }

@@ -19,6 +19,7 @@ public sealed class ResumeAnalysisService(
     private static readonly Regex BulletLineRegex = new(@"^\s*([\-*•]|[0-9]+\.)\s+", RegexOptions.Compiled | RegexOptions.Multiline);
 
     public async Task<ResumeAnalysisResponse> AnalyseAsync(
+        string userId,
         ResumeAnalysisRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -29,7 +30,7 @@ public sealed class ResumeAnalysisService(
         if (string.IsNullOrWhiteSpace(normalizedResumeText))
         {
             var fallback = BuildFallbackResponse("Resume text extraction returned empty content.");
-            await SaveRecordAsync(request, fallback, cancellationToken);
+            await SaveRecordAsync(userId, request, fallback, cancellationToken);
             return fallback;
         }
 
@@ -96,11 +97,12 @@ public sealed class ResumeAnalysisService(
             signals.TechnicalKeywordHits,
             signals.SectionMatches);
 
-        await SaveRecordAsync(request, response, cancellationToken);
+        await SaveRecordAsync(userId, request, response, cancellationToken);
         return response;
     }
 
     private async Task SaveRecordAsync(
+        string userId,
         ResumeAnalysisRequest request,
         ResumeAnalysisResponse response,
         CancellationToken cancellationToken)
@@ -112,8 +114,19 @@ public sealed class ResumeAnalysisService(
             Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
         };
 
+        var resumeUpload = new ResumeUploadRecord
+        {
+            UserId = userId,
+            OriginalFileName = request.File?.FileName ?? "uploaded-resume.pdf",
+            UploadedAtUtc = DateTime.UtcNow
+        };
+
+        dbContext.ResumeUploadRecords.Add(resumeUpload);
+
         dbContext.ResumeAnalysisRecords.Add(new ResumeAnalysisRecord
         {
+            UserId = userId,
+            ResumeUpload = resumeUpload,
             FileName = request.File?.FileName ?? "uploaded-resume.pdf",
             TargetJobTitle = request.TargetJobTitle.Trim(),
             OverallScore = response.OverallScore,
