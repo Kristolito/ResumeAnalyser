@@ -1,6 +1,6 @@
-import type { ResumeAnalysisResult } from '../types/resume'
+import type { ResumeAnalysisResponse } from '../types/resumeAnalysis'
 
-export const exampleAnalysis: ResumeAnalysisResult = {
+export const exampleAnalysis: ResumeAnalysisResponse = {
   overallScore: 82,
   atsScore: 78,
   candidateSummary:

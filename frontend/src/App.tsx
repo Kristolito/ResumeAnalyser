@@ -1,6 +1,6 @@
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
-import { analyseResume } from './api/resumeApi'
+import { analyseResume } from './services/resumeApi'
 import { FeaturesSection } from './components/sections/FeaturesSection'
 import { FinalCtaSection } from './components/sections/FinalCtaSection'
 import { HeroSection } from './components/sections/HeroSection'
@@ -9,14 +9,15 @@ import { ResultsPreviewSection } from './components/sections/ResultsPreviewSecti
 import { TopNav } from './components/sections/TopNav'
 import { TrustSection } from './components/sections/TrustSection'
 import { exampleAnalysis } from './data/exampleAnalysis'
-import type { ResumeAnalysisPayload, ResumeAnalysisResult } from './types/resume'
+import type { ResumeAnalysisRequest, ResumeAnalysisResponse } from './types/resumeAnalysis'
 
 function App() {
-  const [result, setResult] = useState<ResumeAnalysisResult | null>(null)
+  const [result, setResult] = useState<ResumeAnalysisResponse | null>(null)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [hasRequestedAnalysis, setHasRequestedAnalysis] = useState(false)
 
   const analyseMutation = useMutation({
-    mutationFn: (payload: ResumeAnalysisPayload) => analyseResume(payload),
+    mutationFn: (payload: ResumeAnalysisRequest) => analyseResume(payload),
     onSuccess: (data) => {
       setSubmitError(null)
       setResult(data)
@@ -29,7 +30,8 @@ function App() {
     },
   })
 
-  const handleSubmit = async (payload: ResumeAnalysisPayload) => {
+  const handleSubmit = async (payload: ResumeAnalysisRequest) => {
+    setHasRequestedAnalysis(true)
     await analyseMutation.mutateAsync(payload)
   }
 
@@ -57,6 +59,7 @@ function App() {
           isLoading={analyseMutation.isPending}
           errorMessage={submitError}
           previewResult={exampleAnalysis}
+          hasRequestedAnalysis={hasRequestedAnalysis}
         />
         <TrustSection />
         <FinalCtaSection onPrimaryClick={() => scrollTo('upload-card')} />

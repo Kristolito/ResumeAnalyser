@@ -1,16 +1,23 @@
-import type { ResumeAnalysisResult } from '../types/resume'
+import type { ResumeAnalysisResponse } from '../types/resumeAnalysis'
 import { InsightList } from './InsightList'
 import { ScoreCard } from './ScoreCard'
 import { Badge } from './ui/Badge'
 
 interface AnalysisResultsProps {
-  result: ResumeAnalysisResult | null
+  result: ResumeAnalysisResponse | null
   isLoading: boolean
   errorMessage?: string | null
-  fallbackPreview?: ResumeAnalysisResult
+  fallbackPreview?: ResumeAnalysisResponse
+  hasRequestedAnalysis?: boolean
 }
 
-export function AnalysisResults({ result, isLoading, errorMessage, fallbackPreview }: AnalysisResultsProps) {
+export function AnalysisResults({
+  result,
+  isLoading,
+  errorMessage,
+  fallbackPreview,
+  hasRequestedAnalysis = false,
+}: AnalysisResultsProps) {
   if (isLoading) {
     return (
       <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
@@ -45,7 +52,7 @@ export function AnalysisResults({ result, isLoading, errorMessage, fallbackPrevi
     <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
       <div className="mb-5 flex items-center justify-between">
         <h3 className="text-xl font-semibold text-white">Analysis Preview</h3>
-        {result ? <Badge>Live Result</Badge> : <Badge>Example Output</Badge>}
+        {result ? <Badge>Live Result</Badge> : hasRequestedAnalysis ? <Badge>No Result</Badge> : <Badge>Idle Preview</Badge>}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

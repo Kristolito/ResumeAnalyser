@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from 'react'
-import type { ResumeAnalysisPayload } from '../types/resume'
+import type { ResumeAnalysisRequest } from '../types/resumeAnalysis'
 
 interface ResumeUploadFormProps {
-  onSubmit: (payload: ResumeAnalysisPayload) => Promise<void>
+  onSubmit: (payload: ResumeAnalysisRequest) => Promise<void>
   isSubmitting: boolean
 }
 

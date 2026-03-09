@@ -1,12 +1,13 @@
-import type { ResumeAnalysisResult } from '../../types/resume'
+import type { ResumeAnalysisResponse } from '../../types/resumeAnalysis'
 import { AnalysisResults } from '../AnalysisResults'
 import { Section } from '../ui/Section'
 
 interface ResultsPreviewSectionProps {
-  result: ResumeAnalysisResult | null
+  result: ResumeAnalysisResponse | null
   isLoading: boolean
   errorMessage: string | null
-  previewResult: ResumeAnalysisResult
+  previewResult: ResumeAnalysisResponse
+  hasRequestedAnalysis: boolean
 }
 
 export function ResultsPreviewSection({
@@ -14,6 +15,7 @@ export function ResultsPreviewSection({
   isLoading,
   errorMessage,
   previewResult,
+  hasRequestedAnalysis,
 }: ResultsPreviewSectionProps) {
   return (
     <Section id="analysis-preview" className="py-20">
@@ -29,6 +31,7 @@ export function ResultsPreviewSection({
         isLoading={isLoading}
         errorMessage={errorMessage}
         fallbackPreview={previewResult}
+        hasRequestedAnalysis={hasRequestedAnalysis}
       />
     </Section>
   )

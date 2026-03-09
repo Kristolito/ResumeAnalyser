@@ -1,11 +1,11 @@
-export interface ResumeAnalysisPayload {
+export interface ResumeAnalysisRequest {
   file: File
   targetJobTitle: string
   targetJobDescription: string
   notes?: string
 }
 
-export interface ResumeAnalysisResult {
+export interface ResumeAnalysisResponse {
   overallScore: number
   atsScore: number
   candidateSummary: string

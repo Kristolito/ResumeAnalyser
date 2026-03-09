@@ -2,10 +2,10 @@ import { Badge } from '../ui/Badge'
 import { Button } from '../ui/Button'
 import { Section } from '../ui/Section'
 import { ResumeUploadForm } from '../ResumeUploadForm'
-import type { ResumeAnalysisPayload } from '../../types/resume'
+import type { ResumeAnalysisRequest } from '../../types/resumeAnalysis'
 
 interface HeroSectionProps {
-  onSubmit: (payload: ResumeAnalysisPayload) => Promise<void>
+  onSubmit: (payload: ResumeAnalysisRequest) => Promise<void>
   isSubmitting: boolean
   submitError: string | null
   onSeePreview: () => void
