@@ -1,11 +1,10 @@
-using ResumeAnalyser.Api.Contracts.Requests;
-using ResumeAnalyser.Api.Contracts.Responses;
+using ResumeAnalyser.Api.Models;
 
 namespace ResumeAnalyser.Api.Services.Interfaces;
 
 public interface IResumeAnalysisService
 {
     Task<ResumeAnalysisResponse> AnalyseAsync(
-        ResumeAnalysisFormRequest request,
+        ResumeAnalysisRequest request,
         CancellationToken cancellationToken = default);
 }

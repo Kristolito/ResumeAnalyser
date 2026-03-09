@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ResumeAnalyser.Api.Configuration;
 using ResumeAnalyser.Api.Data;
+using ResumeAnalyser.Api.Infrastructure.FileValidation;
 using ResumeAnalyser.Api.Services.Implementations;
 using ResumeAnalyser.Api.Services.Interfaces;
 
@@ -40,6 +41,7 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 builder.Services.AddScoped<IPdfTextExtractor, MockPdfTextExtractor>();
 builder.Services.AddScoped<IAiResumeAnalysisService, MockAiResumeAnalysisService>();
 builder.Services.AddScoped<IResumeAnalysisService, ResumeAnalysisService>();
+builder.Services.AddScoped<IPdfFileValidator, PdfFileValidator>();
 
 var app = builder.Build();
 
