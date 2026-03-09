@@ -52,6 +52,7 @@ public sealed class ResumeAnalysisHistoryService(AppDbContext dbContext) : IResu
             Weaknesses = parsed?.Analysis.Weaknesses ?? [],
             MissingKeywords = parsed?.Analysis.MissingKeywords ?? [],
             Recommendations = parsed?.Analysis.Recommendations ?? [],
+            ScoreBreakdown = parsed?.Analysis.ScoreBreakdown,
             TargetJobTitle = record.TargetJobTitle,
             TargetJobDescription = parsed?.TargetJobDescription ?? string.Empty,
             Notes = parsed?.Notes,

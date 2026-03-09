@@ -67,8 +67,9 @@ public sealed class ResumeAnalysisService(
             ImpactPhraseHits = impactPhraseCount
         };
 
-        var overallScore = RuleBasedScoringHelper.CalculateOverallScore(signals);
-        var atsScore = RuleBasedScoringHelper.CalculateAtsScore(signals);
+        var scoring = RuleBasedScoringHelper.Calculate(signals);
+        var overallScore = scoring.OverallScore;
+        var atsScore = scoring.AtsScore;
 
         var response = new ResumeAnalysisResponse
         {
@@ -79,6 +80,7 @@ public sealed class ResumeAnalysisService(
             Weaknesses = BuildWeaknesses(signals),
             MissingKeywords = signals.MissingKeywords,
             Recommendations = BuildRecommendations(signals),
+            ScoreBreakdown = scoring.ScoreBreakdown,
             DebugExtractedTextPreview = hostEnvironment.IsDevelopment()
                 ? (normalizedResumeText.Length > 320 ? normalizedResumeText[..320] + "..." : normalizedResumeText)
                 : null

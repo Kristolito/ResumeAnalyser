@@ -8,6 +8,13 @@ export interface ResumeAnalysisRequest {
 export interface ResumeAnalysisResponse {
   overallScore: number
   atsScore: number
+  scoreBreakdown?: {
+    structure: number
+    keywordAlignment: number
+    skillsCoverage: number
+    achievementEvidence: number
+    readability: number
+  }
   candidateSummary: string
   strengths: string[]
   weaknesses: string[]

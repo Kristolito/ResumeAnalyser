@@ -1,6 +1,5 @@
 import type { ResumeAnalysisResponse } from '../types/resumeAnalysis'
-import { InsightList } from './InsightList'
-import { ScoreCard } from './ScoreCard'
+import { AnalysisReportView } from './analysis/AnalysisReportView'
 import { Badge } from './ui/Badge'
 
 interface AnalysisResultsProps {
@@ -49,28 +48,21 @@ export function AnalysisResults({
   }
 
   return (
-    <div className="rounded-3xl border border-white/10 bg-slate-900/70 p-6">
-      <div className="mb-5 flex items-center justify-between">
-        <h3 className="text-xl font-semibold text-white">Analysis Preview</h3>
-        {result ? <Badge>Live Result</Badge> : hasRequestedAnalysis ? <Badge>No Result</Badge> : <Badge>Idle Preview</Badge>}
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        {result ? (
+          <Badge>Live Result</Badge>
+        ) : hasRequestedAnalysis ? (
+          <Badge>No Result</Badge>
+        ) : (
+          <Badge>Idle Preview</Badge>
+        )}
       </div>
-
-      <div className="grid gap-4 md:grid-cols-2">
-        <ScoreCard title="Overall Score" score={activeResult.overallScore} />
-        <ScoreCard title="ResumeAnalyser Score" score={activeResult.atsScore} />
-      </div>
-
-      <article className="mt-4 rounded-2xl border border-white/10 bg-slate-900/60 p-5">
-        <h4 className="text-base font-semibold text-white">Candidate Summary</h4>
-        <p className="mt-2 text-sm leading-6 text-slate-300">{activeResult.candidateSummary}</p>
-      </article>
-
-      <div className="mt-4 grid gap-4 lg:grid-cols-2">
-        <InsightList title="Strengths" items={activeResult.strengths} />
-        <InsightList title="Weaknesses" items={activeResult.weaknesses} />
-        <InsightList title="Missing Keywords" items={activeResult.missingKeywords} />
-        <InsightList title="Recommendations" items={activeResult.recommendations} />
-      </div>
+      <AnalysisReportView
+        title="Detailed Analysis"
+        subtitle="Structured report generated from your resume and role context."
+        result={activeResult}
+      />
     </div>
   )
 }

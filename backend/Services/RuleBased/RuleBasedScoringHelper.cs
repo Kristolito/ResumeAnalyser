@@ -1,28 +1,40 @@
 using ResumeAnalyser.Api.Services.Models;
+using ResumeAnalyser.Api.Models;
 
 namespace ResumeAnalyser.Api.Services.RuleBased;
 
 public static class RuleBasedScoringHelper
 {
-    public static int CalculateOverallScore(RuleBasedAnalysisSignals signals)
+    public static RuleBasedScoreResult Calculate(RuleBasedAnalysisSignals signals)
     {
-        var structureScore = WeightedStructureScore(signals);         // 0-25
-        var keywordScore = WeightedKeywordScore(signals, 30);         // 0-30
-        var skillsScore = WeightedSkillsScore(signals);               // 0-20
-        var achievementScore = WeightedAchievementScore(signals);     // 0-15
-        var readabilityScore = WeightedReadabilityScore(signals);     // 0-10
+        var structureRaw = WeightedStructureScore(signals);          // 0-25
+        var keywordRaw = WeightedKeywordScore(signals, 30);          // 0-30
+        var skillsRaw = WeightedSkillsScore(signals);                // 0-20
+        var achievementRaw = WeightedAchievementScore(signals);      // 0-15
+        var readabilityRaw = WeightedReadabilityScore(signals);      // 0-10
 
-        return Clamp(structureScore + keywordScore + skillsScore + achievementScore + readabilityScore);
-    }
+        var overall = Clamp(structureRaw + keywordRaw + skillsRaw + achievementRaw + readabilityRaw);
 
-    public static int CalculateAtsScore(RuleBasedAnalysisSignals signals)
-    {
-        var structureScore = Scale(signals.SectionMatches, 6, 35);              // 0-35
-        var keywordScore = WeightedKeywordScore(signals, 40);                    // 0-40
-        var readabilityScore = Scale(signals.BulletLineCount, 12, 15);           // 0-15
-        var skillsScore = Scale(signals.TechnicalCategoryCoverage, 4, 10);       // 0-10
+        var atsStructure = Scale(signals.SectionMatches, 6, 35);                 // 0-35
+        var atsKeyword = WeightedKeywordScore(signals, 40);                      // 0-40
+        var atsReadability = Scale(signals.BulletLineCount, 12, 15);             // 0-15
+        var atsSkills = Scale(signals.TechnicalCategoryCoverage, 4, 10);         // 0-10
 
-        return Clamp(structureScore + keywordScore + readabilityScore + skillsScore);
+        var ats = Clamp(atsStructure + atsKeyword + atsReadability + atsSkills);
+
+        return new RuleBasedScoreResult
+        {
+            OverallScore = overall,
+            AtsScore = ats,
+            ScoreBreakdown = new ScoreBreakdownResponse
+            {
+                Structure = Scale(structureRaw, 25, 100),
+                KeywordAlignment = Scale(keywordRaw, 30, 100),
+                SkillsCoverage = Scale(skillsRaw, 20, 100),
+                AchievementEvidence = Scale(achievementRaw, 15, 100),
+                Readability = Scale(readabilityRaw, 10, 100)
+            }
+        };
     }
 
     private static int WeightedStructureScore(RuleBasedAnalysisSignals signals)

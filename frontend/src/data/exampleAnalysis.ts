@@ -3,6 +3,13 @@ import type { ResumeAnalysisResponse } from '../types/resumeAnalysis'
 export const exampleAnalysis: ResumeAnalysisResponse = {
   overallScore: 82,
   atsScore: 78,
+  scoreBreakdown: {
+    structure: 84,
+    keywordAlignment: 76,
+    skillsCoverage: 81,
+    achievementEvidence: 74,
+    readability: 86,
+  },
   candidateSummary:
     'The resume shows relevant backend experience and measurable impact, but stronger role-specific phrasing would improve alignment with the target position.',
   strengths: [

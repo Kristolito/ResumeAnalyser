@@ -18,6 +18,8 @@ public sealed class ResumeAnalysisHistoryDetailResponse
 
     public List<string> Recommendations { get; set; } = [];
 
+    public ScoreBreakdownResponse? ScoreBreakdown { get; set; }
+
     public string TargetJobTitle { get; set; } = string.Empty;
 
     public string TargetJobDescription { get; set; } = string.Empty;

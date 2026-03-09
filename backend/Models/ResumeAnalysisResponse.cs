@@ -16,6 +16,8 @@ public sealed class ResumeAnalysisResponse
 
     public List<string> Recommendations { get; set; } = [];
 
+    public ScoreBreakdownResponse? ScoreBreakdown { get; set; }
+
     // Development-only helper to verify PDF extraction output.
     public string? DebugExtractedTextPreview { get; set; }
 }

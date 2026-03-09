@@ -46,12 +46,11 @@ public sealed class RuleBasedScoringHelperTests
             ImpactPhraseHits = 4
         };
 
-        var weakOverall = RuleBasedScoringHelper.CalculateOverallScore(weak);
-        var weakAts = RuleBasedScoringHelper.CalculateAtsScore(weak);
-        var strongOverall = RuleBasedScoringHelper.CalculateOverallScore(strong);
-        var strongAts = RuleBasedScoringHelper.CalculateAtsScore(strong);
+        var weakScores = RuleBasedScoringHelper.Calculate(weak);
+        var strongScores = RuleBasedScoringHelper.Calculate(strong);
 
-        Assert.True(strongOverall > weakOverall);
-        Assert.True(strongAts > weakAts);
+        Assert.True(strongScores.OverallScore > weakScores.OverallScore);
+        Assert.True(strongScores.AtsScore > weakScores.AtsScore);
+        Assert.True(strongScores.ScoreBreakdown.Structure >= weakScores.ScoreBreakdown.Structure);
     }
 }
