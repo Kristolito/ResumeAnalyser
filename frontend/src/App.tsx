@@ -1,8 +1,14 @@
 import { useMutation } from '@tanstack/react-query'
 import { useState } from 'react'
 import { analyseResume } from './api/resumeApi'
-import { AnalysisResults } from './components/AnalysisResults'
-import { ResumeUploadForm } from './components/ResumeUploadForm'
+import { FeaturesSection } from './components/sections/FeaturesSection'
+import { FinalCtaSection } from './components/sections/FinalCtaSection'
+import { HeroSection } from './components/sections/HeroSection'
+import { HowItWorksSection } from './components/sections/HowItWorksSection'
+import { ResultsPreviewSection } from './components/sections/ResultsPreviewSection'
+import { TopNav } from './components/sections/TopNav'
+import { TrustSection } from './components/sections/TrustSection'
+import { exampleAnalysis } from './data/exampleAnalysis'
 import type { ResumeAnalysisPayload, ResumeAnalysisResult } from './types/resume'
 
 function App() {
@@ -14,10 +20,12 @@ function App() {
     onSuccess: (data) => {
       setSubmitError(null)
       setResult(data)
+      document.getElementById('analysis-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
     onError: (error: Error) => {
       setResult(null)
       setSubmitError(error.message)
+      document.getElementById('analysis-preview')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
     },
   })
 
@@ -25,30 +33,35 @@ function App() {
     await analyseMutation.mutateAsync(payload)
   }
 
+  const scrollTo = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  }
+
   return (
-    <main className="app-shell">
-      <section className="panel">
-        <div className="panel-header">
-          <p className="eyebrow">ResumeAnalyser</p>
-          <h1>Phase 1 Resume Analysis</h1>
-          <p className="subtle">
-            Upload a PDF resume, provide job context, and receive a structured analysis response.
-          </p>
-        </div>
+    <div className="relative overflow-hidden bg-slate-950">
+      <div className="pointer-events-none absolute inset-x-0 top-0 h-[420px] bg-gradient-to-b from-brand-900/30 via-transparent to-transparent" />
+      <TopNav onPrimaryClick={() => scrollTo('upload-card')} />
 
-        <ResumeUploadForm onSubmit={handleSubmit} isSubmitting={analyseMutation.isPending} />
-
-        {submitError ? (
-          <div className="error-banner" role="alert">
-            {submitError}
-          </div>
-        ) : null}
-      </section>
-
-      <section className="panel">
-        <AnalysisResults result={result} isLoading={analyseMutation.isPending} />
-      </section>
-    </main>
+      <main className="relative">
+        <HeroSection
+          onSubmit={handleSubmit}
+          isSubmitting={analyseMutation.isPending}
+          submitError={submitError}
+          onSeePreview={() => scrollTo('analysis-preview')}
+          onSeeFeatures={() => scrollTo('features')}
+        />
+        <FeaturesSection />
+        <HowItWorksSection />
+        <ResultsPreviewSection
+          result={result}
+          isLoading={analyseMutation.isPending}
+          errorMessage={submitError}
+          previewResult={exampleAnalysis}
+        />
+        <TrustSection />
+        <FinalCtaSection onPrimaryClick={() => scrollTo('upload-card')} />
+      </main>
+    </div>
   )
 }
 
