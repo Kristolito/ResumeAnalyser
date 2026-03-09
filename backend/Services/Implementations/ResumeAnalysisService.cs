@@ -1,10 +1,11 @@
-using System.Text.RegularExpressions;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using ResumeAnalyser.Api.Data;
 using ResumeAnalyser.Api.Domain.Entities;
 using ResumeAnalyser.Api.Models;
 using ResumeAnalyser.Api.Services.Interfaces;
 using ResumeAnalyser.Api.Services.Models;
+using ResumeAnalyser.Api.Services.RuleBased;
 
 namespace ResumeAnalyser.Api.Services.Implementations;
 
@@ -14,376 +15,239 @@ public sealed class ResumeAnalysisService(
     ILogger<ResumeAnalysisService> logger,
     IHostEnvironment hostEnvironment) : IResumeAnalysisService
 {
-    private static readonly Regex WordRegex = new(@"\b[\w+#.]+\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+    private static readonly Regex WordRegex = new(@"\b[\w+#./-]+\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
     private static readonly Regex BulletLineRegex = new(@"^\s*([\-*•]|[0-9]+\.)\s+", RegexOptions.Compiled | RegexOptions.Multiline);
-    private static readonly Regex NumericSignalRegex = new(@"\b\d+([.,]\d+)?(%|k|m|b)?\b", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-    private static readonly Regex MultiSpaceRegex = new(@"\s+", RegexOptions.Compiled);
-
-    private static readonly string[] SectionHeadings =
-    [
-        "summary", "profile", "experience", "work experience", "employment", "skills", "technical skills", "education",
-        "projects", "certifications"
-    ];
-
-    private static readonly string[] AchievementVerbs =
-    [
-        "increased", "reduced", "improved", "delivered", "led", "built", "optimized", "launched", "implemented",
-        "designed", "automated", "scaled", "mentored", "owned", "achieved"
-    ];
-
-    private static readonly string[] TechnicalTerms =
-    [
-        "c#", ".net", "java", "python", "javascript", "typescript", "go", "sql", "react", "angular", "vue", "node",
-        "asp.net", "spring", "django", "flask", "kubernetes", "docker", "aws", "azure", "gcp", "mysql", "postgresql",
-        "mongodb", "redis", "ci/cd", "terraform", "git", "microservices", "rest api"
-    ];
-
-    private static readonly HashSet<string> StopWords = new(
-    [
-        "the", "and", "for", "with", "you", "your", "our", "from", "that", "this", "will", "are", "was", "were", "have",
-        "has", "had", "into", "over", "under", "using", "use", "used", "ability", "skills", "skill", "years", "year",
-        "role", "job", "work", "team", "candidate", "strong", "experience", "including", "required", "preferred", "plus",
-        "their", "they", "them", "who", "all", "any", "not", "but", "can", "should", "must", "high", "good", "well",
-        "across", "through", "within", "about", "such", "also", "more", "than", "etc"
-    ], StringComparer.OrdinalIgnoreCase);
 
     public async Task<ResumeAnalysisResponse> AnalyseAsync(
         ResumeAnalysisRequest request,
         CancellationToken cancellationToken = default)
     {
-        var resumeText = await pdfTextExtractor.ExtractTextAsync(request.File!, cancellationToken);
-        var normalizedResumeText = NormalizeText(resumeText);
+        var extractedResumeText = await pdfTextExtractor.ExtractTextAsync(request.File!, cancellationToken);
+        var normalizedResumeText = RuleBasedTextNormalizer.NormalizeForMatching(extractedResumeText);
+        var resumeLines = RuleBasedTextNormalizer.SplitMeaningfulLines(extractedResumeText);
 
         if (string.IsNullOrWhiteSpace(normalizedResumeText))
         {
-            return BuildFallbackResponse("Resume text could not be extracted clearly.", hostEnvironment.IsDevelopment(), string.Empty);
+            var fallback = BuildFallbackResponse("Resume text extraction returned empty content.");
+            await SaveRecordAsync(request, fallback, cancellationToken);
+            return fallback;
         }
 
-        var keywordTargets = BuildKeywordTargets(
+        var keywordTargets = KeywordExtractionHelper.BuildKeywordTargets(
             request.TargetJobTitle,
             request.TargetJobDescription,
             request.Notes);
 
-        var signals = CollectSignals(normalizedResumeText, keywordTargets);
-        var overallScore = CalculateOverallScore(signals);
-        var atsScore = CalculateAtsScore(signals);
+        var matchedKeywords = KeywordExtractionHelper.FindMatchedKeywords(normalizedResumeText, keywordTargets);
+        var missingKeywords = KeywordExtractionHelper.FindMissingKeywords(normalizedResumeText, keywordTargets);
+        var (sectionCount, missingSections) = SectionDetectionHelper.DetectSections(resumeLines);
+        var (skillHits, skillCategoryCoverage, matchedSkills) = TechnicalSkillDetectionHelper.Detect(normalizedResumeText);
+        var (numericCount, percentCount, currencyCount, scaleCount, actionVerbCount, impactPhraseCount) =
+            AchievementDetectionHelper.Analyze(normalizedResumeText);
 
-        var strengths = BuildStrengths(signals, overallScore, atsScore);
-        var weaknesses = BuildWeaknesses(signals, overallScore, atsScore);
-        var recommendations = BuildRecommendations(signals, weaknesses, keywordTargets.Count);
+        var signals = new RuleBasedAnalysisSignals
+        {
+            ResumeWordCount = WordRegex.Matches(extractedResumeText).Count,
+            ResumeLineCount = resumeLines.Count,
+            SectionMatches = sectionCount,
+            MissingSections = missingSections,
+            BulletLineCount = BulletLineRegex.Matches(extractedResumeText).Count,
+            KeywordTargetCount = keywordTargets.Count,
+            KeywordMatchedCount = matchedKeywords.Count,
+            MatchedKeywords = matchedKeywords,
+            MissingKeywords = missingKeywords,
+            TechnicalKeywordHits = skillHits,
+            TechnicalCategoryCoverage = skillCategoryCoverage,
+            MatchedTechnicalSkills = matchedSkills,
+            NumericSignalHits = numericCount,
+            PercentSignalHits = percentCount,
+            CurrencySignalHits = currencyCount,
+            ScaleSignalHits = scaleCount,
+            AchievementVerbHits = actionVerbCount,
+            ImpactPhraseHits = impactPhraseCount
+        };
 
-        var summary = BuildCandidateSummary(signals, overallScore, atsScore);
-        var previewText = normalizedResumeText.Length > 320 ? normalizedResumeText[..320] + "..." : normalizedResumeText;
-
-        logger.LogInformation(
-            "Rule-based analysis completed for {FileName}. Overall: {OverallScore}, ATS: {AtsScore}, Words: {WordCount}, Keywords: {KeywordMatched}/{KeywordTarget}.",
-            request.File?.FileName,
-            overallScore,
-            atsScore,
-            signals.ResumeWordCount,
-            signals.KeywordMatchedCount,
-            signals.KeywordTargetCount);
+        var overallScore = RuleBasedScoringHelper.CalculateOverallScore(signals);
+        var atsScore = RuleBasedScoringHelper.CalculateAtsScore(signals);
 
         var response = new ResumeAnalysisResponse
         {
             OverallScore = overallScore,
             AtsScore = atsScore,
-            CandidateSummary = summary,
-            Strengths = strengths,
-            Weaknesses = weaknesses,
+            CandidateSummary = BuildCandidateSummary(signals, overallScore, atsScore),
+            Strengths = BuildStrengths(signals),
+            Weaknesses = BuildWeaknesses(signals),
             MissingKeywords = signals.MissingKeywords,
-            Recommendations = recommendations,
-            DebugExtractedTextPreview = hostEnvironment.IsDevelopment() ? previewText : null
+            Recommendations = BuildRecommendations(signals),
+            DebugExtractedTextPreview = hostEnvironment.IsDevelopment()
+                ? (normalizedResumeText.Length > 320 ? normalizedResumeText[..320] + "..." : normalizedResumeText)
+                : null
         };
 
-        var record = new ResumeAnalysisRecord
+        logger.LogInformation(
+            "Analysis completed for {FileName}. Overall={Overall}, ATS={Ats}, MatchedKeywords={Matched}/{TotalKeywords}, Skills={SkillHits}, Sections={Sections}.",
+            request.File?.FileName,
+            overallScore,
+            atsScore,
+            signals.KeywordMatchedCount,
+            signals.KeywordTargetCount,
+            signals.TechnicalKeywordHits,
+            signals.SectionMatches);
+
+        await SaveRecordAsync(request, response, cancellationToken);
+        return response;
+    }
+
+    private async Task SaveRecordAsync(
+        ResumeAnalysisRequest request,
+        ResumeAnalysisResponse response,
+        CancellationToken cancellationToken)
+    {
+        var storedPayload = new StoredAnalysisPayload
+        {
+            Analysis = response,
+            TargetJobDescription = request.TargetJobDescription.Trim(),
+            Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
+        };
+
+        dbContext.ResumeAnalysisRecords.Add(new ResumeAnalysisRecord
         {
             FileName = request.File?.FileName ?? "uploaded-resume.pdf",
             TargetJobTitle = request.TargetJobTitle.Trim(),
             OverallScore = response.OverallScore,
             AtsScore = response.AtsScore,
-            ResultJson = JsonSerializer.Serialize(new StoredAnalysisPayload
-            {
-                Analysis = response,
-                TargetJobDescription = request.TargetJobDescription.Trim(),
-                Notes = string.IsNullOrWhiteSpace(request.Notes) ? null : request.Notes.Trim()
-            }),
+            ResultJson = JsonSerializer.Serialize(storedPayload),
             CreatedAtUtc = DateTime.UtcNow
-        };
+        });
 
-        dbContext.ResumeAnalysisRecords.Add(record);
         await dbContext.SaveChangesAsync(cancellationToken);
-
-        return response;
     }
 
-    private static RuleBasedAnalysisSignals CollectSignals(string resumeText, List<string> keywordTargets)
-    {
-        var lowerResumeText = resumeText.ToLowerInvariant();
-        var words = WordRegex.Matches(resumeText);
-        var bulletMatches = BulletLineRegex.Matches(resumeText);
-        var numericSignals = NumericSignalRegex.Matches(resumeText).Count;
-
-        var sectionMatches = SectionHeadings.Count(section => ContainsPhrase(lowerResumeText, section));
-        var keywordMatchedCount = keywordTargets.Count(keyword => ContainsPhrase(lowerResumeText, keyword));
-        var missingKeywords = keywordTargets
-            .Where(keyword => !ContainsPhrase(lowerResumeText, keyword))
-            .Take(8)
-            .ToList();
-
-        var technicalHits = TechnicalTerms.Count(term => ContainsPhrase(lowerResumeText, term));
-        var achievementVerbHits = AchievementVerbs.Count(verb => ContainsPhrase(lowerResumeText, verb));
-
-        return new RuleBasedAnalysisSignals
-        {
-            ResumeWordCount = words.Count,
-            SectionMatches = sectionMatches,
-            BulletLineCount = bulletMatches.Count,
-            KeywordTargetCount = keywordTargets.Count,
-            KeywordMatchedCount = keywordMatchedCount,
-            TechnicalKeywordHits = technicalHits,
-            AchievementVerbHits = achievementVerbHits,
-            NumericSignalHits = numericSignals,
-            MissingKeywords = missingKeywords
-        };
-    }
-
-    private static int CalculateOverallScore(RuleBasedAnalysisSignals signals)
-    {
-        var lengthScore = ScoreLength(signals.ResumeWordCount);               // 0-20
-        var sectionScore = ScaleScore(signals.SectionMatches, 6, 20);         // 0-20
-        var keywordScore = ScoreKeywordAlignment(signals, 25);                // 0-25
-        var technicalScore = ScaleScore(signals.TechnicalKeywordHits, 12, 15); // 0-15
-        var achievementScore = ScoreAchievementSignals(signals);              // 0-20
-
-        return ClampScore(lengthScore + sectionScore + keywordScore + technicalScore + achievementScore);
-    }
-
-    private static int CalculateAtsScore(RuleBasedAnalysisSignals signals)
-    {
-        var sectionScore = ScaleScore(signals.SectionMatches, 6, 35);         // 0-35
-        var bulletScore = ScaleScore(signals.BulletLineCount, 10, 20);        // 0-20
-        var keywordScore = ScoreKeywordAlignment(signals, 35);                // 0-35
-        var lengthScore = ScaleScore(ScoreLength(signals.ResumeWordCount), 20, 10); // 0-10
-
-        return ClampScore(sectionScore + bulletScore + keywordScore + lengthScore);
-    }
-
-    private static int ScoreLength(int wordCount)
-    {
-        return wordCount switch
-        {
-            < 180 => 5,
-            <= 300 => 14,
-            <= 900 => 20,
-            <= 1300 => 12,
-            _ => 7
-        };
-    }
-
-    private static int ScoreKeywordAlignment(RuleBasedAnalysisSignals signals, int maxScore)
-    {
-        if (signals.KeywordTargetCount == 0)
-        {
-            return (int)Math.Round(maxScore * 0.55);
-        }
-
-        return ScaleScore(signals.KeywordMatchedCount, signals.KeywordTargetCount, maxScore);
-    }
-
-    private static int ScoreAchievementSignals(RuleBasedAnalysisSignals signals)
-    {
-        var verbScore = ScaleScore(signals.AchievementVerbHits, 8, 10);
-        var numericScore = ScaleScore(signals.NumericSignalHits, 8, 10);
-        return ClampScore(verbScore + numericScore, 20);
-    }
-
-    private static int ScaleScore(int value, int expectedMax, int scoreMax)
-    {
-        if (expectedMax <= 0 || scoreMax <= 0)
-        {
-            return 0;
-        }
-
-        var ratio = Math.Min(1d, Math.Max(0d, value / (double)expectedMax));
-        return (int)Math.Round(ratio * scoreMax);
-    }
-
-    private static int ClampScore(int score, int max = 100) => Math.Min(max, Math.Max(0, score));
-
-    private static string NormalizeText(string text)
-    {
-        return MultiSpaceRegex.Replace(text, " ").Trim();
-    }
-
-    private static List<string> BuildKeywordTargets(string jobTitle, string jobDescription, string? notes)
-    {
-        var source = $"{jobTitle} {jobDescription} {notes}";
-        var tokens = WordRegex.Matches(source.ToLowerInvariant())
-            .Select(match => match.Value.Trim())
-            .Where(token => token.Length >= 4)
-            .Where(token => !StopWords.Contains(token))
-            .ToList();
-
-        var ranked = tokens
-            .GroupBy(token => token)
-            .OrderByDescending(group => group.Count())
-            .ThenBy(group => group.Key)
-            .Select(group => group.Key)
-            .Take(20)
-            .ToList();
-
-        return ranked;
-    }
-
-    private static List<string> BuildStrengths(RuleBasedAnalysisSignals signals, int overallScore, int atsScore)
+    private static List<string> BuildStrengths(RuleBasedAnalysisSignals signals)
     {
         var strengths = new List<string>();
 
-        if (signals.ResumeWordCount >= 250 && signals.ResumeWordCount <= 1000)
-        {
-            strengths.Add("Resume length appears appropriately detailed for screening.");
-        }
-
         if (signals.SectionMatches >= 4)
         {
-            strengths.Add("Common resume sections are present, improving readability.");
+            strengths.Add("Core resume sections are present, giving the document a clear structure.");
         }
 
-        if (signals.BulletLineCount >= 6)
+        if (signals.KeywordTargetCount > 0 && signals.KeywordMatchedCount >= Math.Max(5, signals.KeywordTargetCount / 2))
         {
-            strengths.Add("Bullet points are used consistently to structure experience.");
+            strengths.Add("Role alignment is solid based on target keyword coverage.");
         }
 
-        if (signals.KeywordTargetCount > 0 && signals.KeywordMatchedCount >= Math.Max(4, signals.KeywordTargetCount / 2))
+        if (signals.TechnicalCategoryCoverage >= 3)
         {
-            strengths.Add("Resume aligns with a meaningful share of target role keywords.");
+            strengths.Add("Technical skills span multiple categories expected in modern engineering roles.");
         }
 
-        if (signals.TechnicalKeywordHits >= 6)
+        if (signals.NumericSignalHits + signals.PercentSignalHits + signals.CurrencySignalHits >= 5)
         {
-            strengths.Add("Technical stack signals are clearly visible.");
+            strengths.Add("Quantified achievement evidence is present and supports impact claims.");
         }
 
-        if (signals.NumericSignalHits >= 4 || signals.AchievementVerbHits >= 4)
+        if (signals.BulletLineCount >= 7)
         {
-            strengths.Add("Achievement-oriented language and measurable outcomes are present.");
-        }
-
-        if (overallScore >= 70 && atsScore >= 65)
-        {
-            strengths.Add("Overall structure and targeting are in a good baseline range.");
+            strengths.Add("Bullet usage supports fast readability for recruiter and ATS scanning.");
         }
 
         if (strengths.Count == 0)
         {
-            strengths.Add("Resume includes core content to begin targeted improvements.");
+            strengths.Add("Resume provides a base structure to build stronger role alignment.");
         }
 
         return strengths.Take(5).ToList();
     }
 
-    private static List<string> BuildWeaknesses(RuleBasedAnalysisSignals signals, int overallScore, int atsScore)
+    private static List<string> BuildWeaknesses(RuleBasedAnalysisSignals signals)
     {
         var weaknesses = new List<string>();
 
-        if (signals.ResumeWordCount < 200)
+        if (signals.MissingSections.Contains("summary", StringComparer.OrdinalIgnoreCase))
         {
-            weaknesses.Add("Resume may be too short to fully communicate relevant experience.");
-        }
-        else if (signals.ResumeWordCount > 1200)
-        {
-            weaknesses.Add("Resume may be too long and could lose focus for quick screening.");
+            weaknesses.Add("A professional summary/profile section is missing or unclear.");
         }
 
-        if (signals.SectionMatches < 3)
+        if (signals.MissingSections.Contains("experience", StringComparer.OrdinalIgnoreCase))
         {
-            weaknesses.Add("Several expected sections are missing or unclear.");
+            weaknesses.Add("Experience section detection is weak, reducing credibility and context.");
         }
 
-        if (signals.BulletLineCount < 3)
+        if (signals.KeywordTargetCount > 0 && signals.KeywordMatchedCount < Math.Max(4, signals.KeywordTargetCount / 3))
         {
-            weaknesses.Add("Limited bullet structure can reduce readability.");
+            weaknesses.Add("Keyword alignment to the target role is currently limited.");
         }
 
-        if (signals.KeywordTargetCount > 0 && signals.KeywordMatchedCount < Math.Max(3, signals.KeywordTargetCount / 3))
+        if (signals.TechnicalCategoryCoverage < 2)
         {
-            weaknesses.Add("Keyword alignment with the target job description is currently low.");
+            weaknesses.Add("Technical coverage appears narrow across languages/frameworks/cloud/tooling.");
         }
 
-        if (signals.TechnicalKeywordHits < 4)
+        if (signals.AchievementVerbHits + signals.ImpactPhraseHits < 4 || signals.NumericSignalHits < 2)
         {
-            weaknesses.Add("Technical signals could be clearer for role matching.");
+            weaknesses.Add("Achievement statements are not consistently supported by measurable outcomes.");
         }
 
-        if (signals.NumericSignalHits < 2 && signals.AchievementVerbHits < 3)
+        if (signals.ResumeWordCount < 220)
         {
-            weaknesses.Add("Achievement impact is underrepresented with measurable outcomes.");
+            weaknesses.Add("Resume content may be too short to convey depth of experience.");
         }
-
-        if (overallScore < 55 || atsScore < 55)
+        else if (signals.ResumeWordCount > 1300)
         {
-            weaknesses.Add("Current structure and targeting may limit interview conversion.");
+            weaknesses.Add("Resume length may be too long for fast screening.");
         }
 
         if (weaknesses.Count == 0)
         {
-            weaknesses.Add("No major structural issues detected, but optimization opportunities remain.");
+            weaknesses.Add("No major blockers detected, but targeting can still be improved.");
         }
 
         return weaknesses.Take(5).ToList();
     }
 
-    private static List<string> BuildRecommendations(
-        RuleBasedAnalysisSignals signals,
-        IReadOnlyCollection<string> weaknesses,
-        int keywordPoolSize)
+    private static List<string> BuildRecommendations(RuleBasedAnalysisSignals signals)
     {
         var recommendations = new List<string>();
 
-        if (signals.SectionMatches < 4)
+        if (signals.MissingSections.Contains("summary", StringComparer.OrdinalIgnoreCase))
         {
-            recommendations.Add("Add clear section headers for summary, experience, skills, and education.");
+            recommendations.Add("Add a concise professional summary aligned to your target role.");
         }
 
         if (signals.BulletLineCount < 5)
         {
-            recommendations.Add("Rewrite experience entries into concise achievement-focused bullet points.");
+            recommendations.Add("Rewrite experience entries into achievement-focused bullet points.");
         }
 
-        if (signals.NumericSignalHits < 3)
+        if (signals.NumericSignalHits + signals.PercentSignalHits + signals.CurrencySignalHits < 4)
         {
-            recommendations.Add("Include measurable outcomes such as percentages, scale, or impact metrics.");
+            recommendations.Add("Add quantified metrics (percentages, scale, revenue/cost impact) to key achievements.");
         }
 
         if (signals.MissingKeywords.Count > 0)
         {
-            recommendations.Add("Integrate missing target-role keywords naturally into relevant experience lines.");
+            var topMissing = string.Join(", ", signals.MissingKeywords.Take(3));
+            recommendations.Add($"Integrate missing role keywords such as {topMissing} in relevant experience bullets.");
         }
 
-        if (signals.TechnicalKeywordHits < 5)
+        var missingCloudTerms = signals.MissingKeywords
+            .Where(keyword => TechnicalSkillCatalog.Categories["cloud"].Contains(keyword, StringComparer.OrdinalIgnoreCase))
+            .Take(2)
+            .ToList();
+        if (missingCloudTerms.Count > 0)
         {
-            recommendations.Add("Clarify technical skills by grouping languages, frameworks, cloud, and tools.");
+            recommendations.Add($"Strengthen cloud/platform alignment by adding evidence for {string.Join(", ", missingCloudTerms)}.");
         }
 
-        if (signals.ResumeWordCount < 200)
+        if (signals.MissingSections.Contains("skills", StringComparer.OrdinalIgnoreCase) || signals.TechnicalCategoryCoverage < 3)
         {
-            recommendations.Add("Expand recent role details with responsibilities and quantified outcomes.");
-        }
-        else if (signals.ResumeWordCount > 1200)
-        {
-            recommendations.Add("Trim lower-impact details to keep the resume focused and scannable.");
-        }
-
-        if (weaknesses.Any(weakness => weakness.Contains("keyword alignment", StringComparison.OrdinalIgnoreCase)) &&
-            keywordPoolSize > 0)
-        {
-            recommendations.Add("Tailor the summary and top experience bullets to mirror the target role language.");
+            recommendations.Add("Improve the skills section by grouping languages, frameworks, cloud, databases, and DevOps tools.");
         }
 
         if (recommendations.Count == 0)
         {
-            recommendations.Add("Maintain current structure and continue tailoring the resume for each target role.");
+            recommendations.Add("Maintain current structure and tailor wording per target job to maximize match quality.");
         }
 
         return recommendations.Distinct(StringComparer.OrdinalIgnoreCase).Take(6).ToList();
@@ -391,49 +255,43 @@ public sealed class ResumeAnalysisService(
 
     private static string BuildCandidateSummary(RuleBasedAnalysisSignals signals, int overallScore, int atsScore)
     {
-        var structureSummary = signals.SectionMatches >= 4 && signals.BulletLineCount >= 5
-            ? "The resume appears reasonably well structured."
-            : "The resume structure needs clearer sectioning and formatting signals.";
+        var alignment = signals.KeywordTargetCount switch
+        {
+            0 => "Keyword alignment could not be fully evaluated.",
+            _ when signals.KeywordMatchedCount >= Math.Max(6, signals.KeywordTargetCount / 2) =>
+                "Role alignment looks strong based on keyword and skill overlap.",
+            _ when signals.KeywordMatchedCount >= Math.Max(3, signals.KeywordTargetCount / 3) =>
+                "Role alignment is moderate with several coverage gaps.",
+            _ => "Role alignment is currently low and needs focused keyword tuning."
+        };
 
-        var alignmentSummary = signals.KeywordTargetCount == 0
-            ? "Target role keyword alignment could not be evaluated in depth."
-            : signals.KeywordMatchedCount >= Math.Max(4, signals.KeywordTargetCount / 2)
-                ? "It shows useful alignment with the target role keywords."
-                : "Alignment with the target role keywords is currently moderate to low.";
+        var structure = signals.SectionMatches >= 4
+            ? "The resume structure is generally clear."
+            : "The resume structure needs clearer section organization.";
 
-        var impactSummary = signals.NumericSignalHits >= 3 || signals.AchievementVerbHits >= 4
-            ? "Achievement and impact signals are present."
-            : "Achievement evidence should be strengthened with more measurable outcomes.";
+        var impact = signals.NumericSignalHits + signals.ImpactPhraseHits >= 5
+            ? "Impact evidence is present with measurable outcomes."
+            : "Impact evidence should be strengthened with quantified achievements.";
 
-        return $"{structureSummary} {alignmentSummary} {impactSummary} " +
-               $"Overall score: {overallScore}, screening compatibility score: {atsScore}.";
+        return $"{structure} {alignment} {impact} Overall score: {overallScore}, ATS score: {atsScore}.";
     }
 
-    private static bool ContainsPhrase(string text, string phrase)
-    {
-        var escaped = Regex.Escape(phrase);
-        return Regex.IsMatch(text, $@"\b{escaped}\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
-    }
-
-    private static ResumeAnalysisResponse BuildFallbackResponse(
-        string summary,
-        bool includeDebugPreview,
-        string extractedPreview)
+    private ResumeAnalysisResponse BuildFallbackResponse(string reason)
     {
         return new ResumeAnalysisResponse
         {
             OverallScore = 35,
             AtsScore = 30,
-            CandidateSummary = summary,
-            Strengths = ["Upload and role details were received successfully."],
-            Weaknesses = ["Resume text quality is too low for reliable analysis."],
+            CandidateSummary = reason,
+            Strengths = ["Upload and request context were received successfully."],
+            Weaknesses = ["Extracted resume text quality is insufficient for reliable analysis."],
             MissingKeywords = [],
             Recommendations =
             [
                 "Upload a text-based PDF exported directly from your editor.",
-                "Ensure the PDF content is selectable text, not only scanned images."
+                "If your PDF is scanned, run OCR first before uploading."
             ],
-            DebugExtractedTextPreview = includeDebugPreview ? extractedPreview : null
+            DebugExtractedTextPreview = hostEnvironment.IsDevelopment() ? string.Empty : null
         };
     }
 }
